@@ -5,17 +5,11 @@ import csv
 
 class atopStore(object):
 
-  restkey = "unknown"
-  
-  restval = None
-
-  skip_fieldnames = [restkey, "label", "host", "date", "time"]
-
   __common_fieldnames = ["label", "host", "epoch", "date", "time", "interval"]
 
-  CPU_fieldnames = __common_fieldnames + ["ticks_per_second", "number_of_processors", "system", "user", "nice", "idle", "wait", "irq", "sirq", "steal", "guest"]
+  CPU_fieldnames = __common_fieldnames + ["ticks_per_second", "number_of_processors", "system", "user", "nice", "idle", "wait", "irq", "sirq", "steal", "guest", "unknown1", "unknown2"]
 
-  cpu_fieldnames = __common_fieldnames + ["ticks_per_second", "processor_number", "system", "user", "nice", "idle", "wait", "irq", "sirq", "steal", "guest"]
+  cpu_fieldnames = __common_fieldnames + ["ticks_per_second", "processor_number", "system", "user", "nice", "idle", "wait", "irq", "sirq", "steal", "guest", "unknown1", "unknown2"]
 
   CPL_fieldnames = __common_fieldnames + ["number_of_processors", "last_minute", "last_five_minutes", "last_fifteen_minutes", "number_of_context_switches", "number_of_interrupts"]
 
@@ -28,55 +22,65 @@ class atopStore(object):
   LVM_fieldnames = __common_fieldnames + ["name", "number_of_milliseconds_spent_for_I/O", "number_of_reads_issued", "number_of_sectors_transferred_for_reads", "number_of_writes_issued", "number_of_sectors_transferred_for_write"]
 
   MDD_fieldnames = LVM_fieldnames
-  
+
   DSK_fieldnames = LVM_fieldnames
-  
+
+  NET_upper_fieldnames = __common_fieldnames + ["name", "number_of_packets_received_by_TCP", "number_of_packets_transmitted_by_TCP", "number_of_packets_received_by_UDP", "number_of_packets_transmitted_by_UDP", "number_of_packets_received_by_IP", "number_of_packets_transmitted_by_IP", "number_of_packets_delivered", "number_of_packets_forwarded"]
+
   NET_fieldnames = __common_fieldnames + ["name", "number_of_packets_received", "number_of_bytes_received", "number_of_packets_transmitted", "number_of_bytes_transmitted", "speed", "duplex_mode"]
 
   def __init__(self, filename, delimiter=' '):
     self.filename = filename
     self.delimiter = delimiter
 
-  def __getattr__(self, name):
-    func = name.split('_')
-    if "fetch" != func[0] or 2 != len(func):
-      return object.__getattribute__(self, name)
+  def __getattr__(self, attr_name):
+    func = attr_name.split('_')
+    if "series" != func[0] or 2 != len(func):
+      return object.__getattribute__(self, attr_name)
 
-    def method(*args):
-      items = []
-      ret = {}
-      for data in self.iter_label(func[1]):
-        for key in data.keys():
-          if self.restkey == key or key in self.skip_fieldnames:
-            continue
-          try:
-            exec key in locals()
-          except NameError:
-            cmd = key + "=[]"
-            items.append(key)
-            #print cmd
-            exec cmd in locals()
-          cmd = key + ".append(" + data[key] + ")"
-          #print cmd
-          exec cmd in locals()
-      for item in items:
-        cmd = "ret['" + item + "']=" + item
-        #print cmd
-        exec cmd in locals()
-      #print locals()
-      return ret
-    return method
+    names = {}
+    items = {}
 
-  def iter_label(self, label):
-    csvfile = open(self.filename, "r")
-    fields = atopStore.__dict__[label + "_fieldnames"]
-    r = csv.DictReader(csvfile, fieldnames=fields, restkey=atopStore.restkey, restval=atopStore.restval, delimiter=self.delimiter)
-    for line in r:
-      if line and line["label"] == label:
-        yield line
+    data = csv.reader(open(self.filename, "r"), delimiter=self.delimiter)
+    for row in data:
+      label = row[0]
+      if "SEP" == label or "RESET" == label or func[1] != label:
+        continue
+
+      if label in ["LVM", "MDD", "DSK", "NET"]:
+        if row[6] not in names:
+          names[row[6]] = {}
+          items = names
+        container = names[row[6]]
+        field_index = 7
+      elif label in ["cpu"]:
+        if row[7] not in names:
+          names[row[7]] = {}
+          items = names
+        container = names[row[7]]
+        field_index = 8
+      else:
+        container = items
+        field_index = 6
+
+      if "NET" == label:
+        dev = row[6]
+        if "upper" == dev:
+          fields = atopStore.__dict__["NET_upper_fieldnames"]
+        else:
+          fields = atopStore.__dict__["NET_fieldnames"]
+      else:
+        fields = atopStore.__dict__[label + "_fieldnames"]
+
+      for i in [2] + range(field_index, len(row)):
+        key = fields[i]
+        if key not in container:
+          container[key] = []
+        series = container[key]
+        series.append(row[i])
+    return items
 
 if __name__ == "__main__":
   store = atopStore("20120709ALL.txt")
-  a = store.fetch_cpu()
-  print a
+  print store.series_MEM
 
