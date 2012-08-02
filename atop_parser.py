@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import csv
+import tempfile
 
 class atopStore(object):
 
@@ -29,6 +30,16 @@ class atopStore(object):
 
   NET_fieldnames = __common_fieldnames + ["name", "number_of_packets_received", "number_of_bytes_received", "number_of_packets_transmitted", "number_of_bytes_transmitted", "speed", "duplex_mode"]
 
+  PRG_fieldnames = __common_fieldnames + ["PID", "name", "state", "real_uid", "real_gid", "TGID", "total_number_of_threads", "exit_code", "start_time", "full_command_line", "PPID", "number_of_threads_in_state_'running'", "number_of_threads_in_state_'interruptible_sleeping'", "number_of_threads_in_state_'uninterruptible_sleeping'", "effective_uid", "effective_gid", "saved_uid", "saved_gid", "filesystem_uid", "filesystem_gid", "elapsed time"]
+
+  PRC_fieldnames = __common_fieldnames + ["PID", "name", "state", "ticks_per_second", "user", "system", "nice_value", "priority", "realtime_priority", "scheduling_policy", "current_CPU", "sleep_average"]
+
+  PRM_fieldnames = __common_fieldnames + ["PID", "name", "state", "page_size", "virtual_memory_size", "resident_memory_size", "shared_text_memory_size", "virtual_memory_growth", "resident_memory_growth", "number_of_minor_page_faults", "number_of_major_page_faults"]
+
+  PRD_fieldnames = __common_fieldnames + ["PID", "name", "state", "kernel-patch_installed", "standard_io_statistics_used", "number_of_reads", "cumulative_number_of_sectors_read", "number_of_writes_on_disk", "cumulative_number_of_sectors_written", "cancelled_number_of_written_sectors"]
+
+  PRN_fieldnames = __common_fieldnames + ["PID", "name", "state", "kernel-patch_installed", "number_of_TCP-packets_transmitted", "cumulative_size_of_TCP-packets_transmitted", "number_of_TCP-packets_received", "cumulative_size_of_TCP-packets_received", "number_of_UDP-packets_transmitted", "cumulative_size_of_UDP-packets_transmitted", "number_of_UDP-packets_received", "cumulative_size_of_UDP-packets_transmitted", "number_of_raw_packets_transmitted", "number_of_raw_packets_received"]
+
   def __init__(self, filename, delimiter=' '):
     self.filename = filename
     self.delimiter = delimiter
@@ -41,13 +52,19 @@ class atopStore(object):
     names = {}
     items = {}
 
-    data = csv.reader(open(self.filename, "r"), delimiter=self.delimiter)
+    s = open(self.filename, "r").read().replace("(", "\"").replace(")", "\"")
+
+    f = tempfile.NamedTemporaryFile()
+    f.write(s)
+    f.flush()
+
+    data = csv.reader(open(f.name, "r"), quotechar="\"", delimiter=self.delimiter)
     for row in data:
       label = row[0]
       if "SEP" == label or "RESET" == label or func[1] != label:
         continue
 
-      if label in ["LVM", "MDD", "DSK", "NET"]:
+      if label in ["LVM", "MDD", "DSK", "NET", "PRG", "PRC", "PRM", "PRD", "PRN"]:
         if row[6] not in names:
           names[row[6]] = {}
           items = names
@@ -74,13 +91,11 @@ class atopStore(object):
 
       for i in [2] + range(field_index, len(row)):
         key = fields[i]
-        if key not in container:
-          container[key] = []
-        series = container[key]
+        series = container.setdefault(key, [])
         series.append(row[i])
     return items
 
 if __name__ == "__main__":
   store = atopStore("20120709ALL.txt")
-  print store.series_MEM
+  print store.series_PRC
 
